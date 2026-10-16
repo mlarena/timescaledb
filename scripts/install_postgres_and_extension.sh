@@ -2,11 +2,16 @@
 set -euo pipefail
 
 # ==============================================================================
-# Установка PostgreSQL (последняя версия) + TimescaleDB + pg_stat_statements
-# Для чистого Debian. Требуется root или sudo.
+# PostgreSQL (latest stable) + TimescaleDB installation for a clean Debian.
+# Requires root or sudo.
+#
+# This script only installs the software and tunes the server. Database
+# creation and per-database extensions are handled by separate scripts:
+#   create_simple_db.sh     -> simple_db    (PostgreSQL + pg_stat_statements)
+#   create_timescale_db.sh  -> timescale_db (TimescaleDB + pg_stat_statements)
 # ==============================================================================
 
-# Цветной вывод
+# Colored output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -14,17 +19,17 @@ NC='\033[0m'
 
 log() { echo -e "${GREEN}[+]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
-error() { echo -e "${RED}[✗]${NC} $1"; exit 1; }
+error() { echo -e "${RED}[x]${NC} $1"; exit 1; }
 
-# Проверка root
+# Root check
 if [[ $EUID -ne 0 ]]; then
-   error "Скрипт должен выполняться от root (sudo)."
+   error "This script must be run as root (sudo)."
 fi
 
 # ==============================================================================
 # ШАГ 1: Подготовка системы
 # ==============================================================================
-log "Обновление системы и установка зависимостей..."
+log "Updating the system and installing dependencies..."
 apt update 
 apt install -y curl ca-certificates gnupg lsb-release wget sudo
 
@@ -32,7 +37,7 @@ apt install -y curl ca-certificates gnupg lsb-release wget sudo
 # ШАГ 2: Подключение официального репозитория PostgreSQL (PGDG)
 # Это гарантирует установку последней стабильной версии PostgreSQL.
 # ==============================================================================
-log "Подключение репозитория PostgreSQL (PGDG)..."
+log "Adding the PostgreSQL (PGDG) repository..."
 
 # Импорт GPG-ключа PostgreSQL
 curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
@@ -51,17 +56,17 @@ apt update
 # ШАГ 3: Установка PostgreSQL (последняя версия)
 # Без указания версии — apt выберет самую свежую из репозитория.
 # ==============================================================================
-log "Установка PostgreSQL (последняя версия из PGDG)..."
+log "Installing PostgreSQL (latest from PGDG)..."
 apt install -y postgresql postgresql-contrib
 
 # Автоматическое определение установленной мажорной версии
 PG_VERSION=$(pg_config --version | awk '{print $2}' | cut -d. -f1)
-log "Установлена PostgreSQL версии: ${PG_VERSION}"
+log "Installed PostgreSQL version: ${PG_VERSION}"
 
 # ==============================================================================
 # ШАГ 4: Подключение репозитория TimescaleDB
 # ==============================================================================
-log "Подключение репозитория TimescaleDB..."
+log "Adding the TimescaleDB repository..."
 
 # Импорт GPG-ключа TimescaleDB
 wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey \
@@ -77,7 +82,7 @@ apt update
 # ШАГ 5: Установка TimescaleDB
 # Пакет имеет вид: timescaledb-2-postgresql-<версия>
 # ==============================================================================
-log "Установка TimescaleDB для PostgreSQL ${PG_VERSION}..."
+log "Installing TimescaleDB for PostgreSQL ${PG_VERSION}..."
 apt install -y "timescaledb-2-postgresql-${PG_VERSION}"
 
 # ==============================================================================
@@ -85,18 +90,18 @@ apt install -y "timescaledb-2-postgresql-${PG_VERSION}"
 # ==============================================================================
 
 # timescaledb-tune: автоматическая оптимизация postgresql.conf
-log "Запуск timescaledb-tune (автоматическая оптимизация)..."
+log "Running timescaledb-tune (automatic tuning)..."
 if command -v timescaledb-tune &> /dev/null; then
     timescaledb-tune --quiet --yes
 else
-    warn "timescaledb-tune не найден. Проверьте установку TimescaleDB."
+    warn "timescaledb-tune not found. Check the TimescaleDB installation."
 fi
 
 # ------------------------------------------------------------------------------
 # Настройка shared_preload_libraries (timescaledb + pg_stat_statements)
 # Важно: не перезаписываем существующие значения, а добавляем к ним.
 # ------------------------------------------------------------------------------
-log "Настройка shared_preload_libraries..."
+log "Configuring shared_preload_libraries..."
 
 PG_CONF="/etc/postgresql/${PG_VERSION}/main/postgresql.conf"
 if [[ -f "$PG_CONF" ]]; then
@@ -125,59 +130,45 @@ if [[ -f "$PG_CONF" ]]; then
     fi
     log "shared_preload_libraries = '${NEW_LIBS}'"
 else
-    warn "Не удалось найти postgresql.conf."
+    warn "Could not find postgresql.conf."
 fi
 
 # ------------------------------------------------------------------------------
 # Перезапуск PostgreSQL для применения всех настроек
 # ------------------------------------------------------------------------------
-log "Перезапуск PostgreSQL..."
+log "Restarting PostgreSQL..."
 systemctl restart postgresql
 systemctl enable postgresql
 
 # ==============================================================================
-# ШАГ 7: Создание базы данных и активация расширений
+# ШАГ 7: Установка пароля роли postgres (нужен для TCP-подключений)
 # ==============================================================================
-DB_NAME="sensors"
-DB_USER="postgres"
-
-log "Создание базы данных '${DB_NAME}'..."
-sudo -u postgres createdb "${DB_NAME}" 2>/dev/null || warn "База '${DB_NAME}' уже существует."
-
-log "Активация расширений в базе '${DB_NAME}'..."
-
-# Активация TimescaleDB
-sudo -u postgres psql -d "${DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;" \
-    && log "TimescaleDB активирован." \
-    || warn "Не удалось активировать TimescaleDB."
-
-# Активация pg_stat_statements
-sudo -u postgres psql -d "${DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;" \
-    && log "pg_stat_statements активирован." \
-    || warn "Не удалось активировать pg_stat_statements."
+DB_PASSWORD="12345678"
+log "Setting the 'postgres' role password..."
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD '${DB_PASSWORD}';"
 
 # ==============================================================================
 # ПРОВЕРКА
 # ==============================================================================
-log "=== ПРОВЕРКА УСТАНОВКИ ==="
+log "=== INSTALLATION CHECK ==="
 echo ""
-echo "Версия PostgreSQL:"
-sudo -u postgres psql -c "SELECT version();" -t | head -1
+echo "PostgreSQL version:"
+sudo -u postgres psql -tAc "SELECT version();"
 
 echo ""
-echo "Установленные расширения в базе '${DB_NAME}':"
-sudo -u postgres psql -d "${DB_NAME}" -c "\dx" | grep -E "timescaledb|pg_stat_statements" || echo "Расширения не найдены."
+echo "shared_preload_libraries:"
+sudo -u postgres psql -tAc "SHOW shared_preload_libraries;"
 
 echo ""
-echo "Статус сервиса PostgreSQL:"
-systemctl is-active postgresql && echo "Работает" || echo "Не работает"
+echo "PostgreSQL service status:"
+systemctl is-active postgresql && echo "running" || echo "not running"
 
 echo ""
-log "=== УСТАНОВКА ЗАВЕРШЕНА ==="
+log "=== INSTALLATION COMPLETE ==="
 echo ""
-echo "Для подключения к базе используйте:"
-echo "  sudo -u postgres psql -d ${DB_NAME}"
+echo "Next step - create the databases:"
+echo "  sudo ./create_simple_db.sh"
+echo "  sudo ./create_timescale_db.sh"
 echo ""
-echo "Для просмотра статистики запросов:"
-echo "  SELECT * FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 10;"
-sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD '12345678';"
+echo "Then connect with:"
+echo "  psql -h localhost -U postgres -d <database>"
