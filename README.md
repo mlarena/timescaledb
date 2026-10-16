@@ -81,7 +81,7 @@ sudo -u postgres psql -d timescale_db -f timescale_db/sensor_timescale_db.sql
 ) WITH (
     tsdb.hypertable,
     tsdb.columnstore      = true,
-    tsdb.partition_column = '"ReceivedAt"',
+    tsdb.partition_column = 'ReceivedAt',
     tsdb.chunk_interval   = '1 day',
     tsdb.segmentby        = '"SensorId"',
     tsdb.orderby          = '"ReceivedAt" DESC'
@@ -91,7 +91,12 @@ sudo -u postgres psql -d timescale_db -f timescale_db/sensor_timescale_db.sql
 - партиционирование по `"ReceivedAt"` (время приёма) — вставки идут в свежий чанк;
 - `chunk_interval = '1 day'` — один чанк на сутки;
 - `segmentby = "SensorId"` — сегментация columnstore по датчику;
-- columnstore-policy создаётся автоматически: чанки старше интервала сжимаются.
+- columnstore-policy создаётся автоматически: чанки старше интервала сжимаются;
+- кавычки зависят от параметра: `partition_column` — **без** кавычек
+  (`'ReceivedAt'`), а `segmentby`/`orderby` — **с** двойными кавычками внутри
+  строки (`'"SensorId"'`), т.к. они разбираются как SQL-идентификаторы;
+- первичный ключ — `("Id", "ReceivedAt")`: гипертаблица требует, чтобы
+  уникальные ограничения включали колонку партиционирования.
 
 ---
 

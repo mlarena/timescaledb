@@ -8,18 +8,27 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 -- (compression) enabled using the declarative CREATE TABLE ... WITH syntax.
 --
 -- Design notes:
---   * tsdb.partition_column = "ReceivedAt" (ingestion time) keeps writes
+--   * tsdb.partition_column = ReceivedAt (ingestion time) keeps writes
 --     append-only to the newest chunk. There are two timestamptz columns in
 --     these tables, so the partition column must be set explicitly.
 --   * tsdb.chunk_interval = 1 day -> one chunk per day.
---   * tsdb.segmentby = "SensorId" -> columnstore is segmented per sensor.
---   * tsdb.orderby   = "ReceivedAt" DESC -> columnstore sort order; also
+--   * tsdb.segmentby = SensorId -> columnstore is segmented per sensor.
+--   * tsdb.orderby   = ReceivedAt DESC -> columnstore sort order; also
 --     creates an implicit sparse index on the orderby column.
 --   * tsdb.columnstore defaults to true, so a columnstore policy is created
 --     automatically (compress chunks older than the chunk interval).
+--   * Quoting differs per option because they are parsed differently:
+--       - tsdb.partition_column is resolved as a raw column name, so it must
+--         be passed WITHOUT quotes: 'ReceivedAt'.
+--       - tsdb.segmentby / tsdb.orderby are parsed as a SQL identifier list /
+--         ORDER BY expression, so mixed-case columns MUST be double-quoted
+--         inside the string: '"SensorId"', '"ReceivedAt" DESC'.
+--     Getting this wrong yields: column "sensorid" does not exist.
 --   * Hypertables require every PRIMARY KEY / UNIQUE constraint to include the
---     partition column. These tables are append-only telemetry, so the
---     surrogate primary key is dropped to keep ingestion fast.
+--     partition column, so the primary key is ("Id", "ReceivedAt") rather than
+--     just ("Id"). Note that a unique constraint makes inserts into compressed
+--     chunks slightly more expensive, because conflicting batches are
+--     decompressed to check for duplicates.
 
 
 CREATE TABLE public."SensorType" (
@@ -162,12 +171,13 @@ CREATE TABLE public."DOVData" (
 	"VisibleRange" numeric(10, 2) NULL,
 	"BrightFlag" int4 NULL,
 	"MonitoringPostId" int4 NULL,
+	CONSTRAINT "DOVData_pkey" PRIMARY KEY ("Id", "ReceivedAt"),
 	CONSTRAINT "DOVData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
 	CONSTRAINT "DOVData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
 ) WITH (
 	tsdb.hypertable,
 	tsdb.columnstore = true,
-	tsdb.partition_column = '"ReceivedAt"',
+	tsdb.partition_column = 'ReceivedAt',
 	tsdb.chunk_interval = '1 day',
 	tsdb.segmentby = '"SensorId"',
 	tsdb.orderby = '"ReceivedAt" DESC'
@@ -198,12 +208,13 @@ CREATE TABLE public."DSPDData" (
 	"DistanceToSurface" numeric(12, 2) NULL,
 	"IsGpsValid" bool DEFAULT true NULL,
 	"MonitoringPostId" int4 NULL,
+	CONSTRAINT "DSPDData_pkey" PRIMARY KEY ("Id", "ReceivedAt"),
 	CONSTRAINT "DSPDData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
 	CONSTRAINT "DSPDData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
 ) WITH (
 	tsdb.hypertable,
 	tsdb.columnstore = true,
-	tsdb.partition_column = '"ReceivedAt"',
+	tsdb.partition_column = 'ReceivedAt',
 	tsdb.chunk_interval = '1 day',
 	tsdb.segmentby = '"SensorId"',
 	tsdb.orderby = '"ReceivedAt" DESC'
@@ -227,12 +238,13 @@ CREATE TABLE public."DustData" (
 	"LaserStatus" int4 NULL,
 	"SupplyVoltage" numeric(10, 2) NULL,
 	"MonitoringPostId" int4 NULL,
+	CONSTRAINT "DustData_pkey" PRIMARY KEY ("Id", "ReceivedAt"),
 	CONSTRAINT "DustData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
 	CONSTRAINT "DustData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
 ) WITH (
 	tsdb.hypertable,
 	tsdb.columnstore = true,
-	tsdb.partition_column = '"ReceivedAt"',
+	tsdb.partition_column = 'ReceivedAt',
 	tsdb.chunk_interval = '1 day',
 	tsdb.segmentby = '"SensorId"',
 	tsdb.orderby = '"ReceivedAt" DESC'
@@ -269,12 +281,13 @@ CREATE TABLE public."IWSData" (
 	"Pitch" numeric(5, 1) NULL,
 	"WeAreFine" int4 NULL,
 	"MonitoringPostId" int4 NULL,
+	CONSTRAINT "IWSData_pkey" PRIMARY KEY ("Id", "ReceivedAt"),
 	CONSTRAINT "IWSData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
 	CONSTRAINT "IWSData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
 ) WITH (
 	tsdb.hypertable,
 	tsdb.columnstore = true,
-	tsdb.partition_column = '"ReceivedAt"',
+	tsdb.partition_column = 'ReceivedAt',
 	tsdb.chunk_interval = '1 day',
 	tsdb.segmentby = '"SensorId"',
 	tsdb.orderby = '"ReceivedAt" DESC'
@@ -305,12 +318,13 @@ CREATE TABLE public."MUEKSData" (
 	"OwenCh1" numeric(5, 2) NULL,
 	"OwenCh2" numeric(5, 2) NULL,
 	"TempExt" numeric(5, 2) NULL,
+	CONSTRAINT "MUEKSData_pkey" PRIMARY KEY ("Id", "ReceivedAt"),
 	CONSTRAINT "MUEKSData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
 	CONSTRAINT "MUEKSData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
 ) WITH (
 	tsdb.hypertable,
 	tsdb.columnstore = true,
-	tsdb.partition_column = '"ReceivedAt"',
+	tsdb.partition_column = 'ReceivedAt',
 	tsdb.chunk_interval = '1 day',
 	tsdb.segmentby = '"SensorId"',
 	tsdb.orderby = '"ReceivedAt" DESC'

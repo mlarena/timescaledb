@@ -1,0 +1,3 @@
+
+scp ""D:\git\timescaledb\release\app.zip"" devuser@192.168.235.132:/tmp
+apt update && apt install unzip curl sudo tree -y
