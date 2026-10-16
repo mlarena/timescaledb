@@ -63,6 +63,8 @@ echo ""
 echo "Extensions in '${DB_NAME}':"
 sudo -u postgres psql -d "${DB_NAME}" -c "\dx"
 
+
+sudo -u postgres psql -d '${DB_NAME}' -f ./sensor_timescale_db.sql
 echo ""
 echo "TimescaleDB version:"
 sudo -u postgres psql -d "${DB_NAME}" -tAc \

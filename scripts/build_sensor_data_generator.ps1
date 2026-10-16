@@ -28,7 +28,8 @@
     Path of the distribution archive. Default: <repo root>/release/app.zip.
     The archive bundles timescaledb_test.zip together with the database
     scripts (install_postgres_and_extension.sh, create_simple_db.sh,
-    create_timescale_db.sh).
+    create_timescale_db.sh) and the schema files (sensor_db.sql,
+    sensor_timescale_db.sql).
 
 .EXAMPLE
     ./build_sensor_data_generator.ps1
@@ -128,17 +129,19 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
     Select-Object Name, Length | Format-Table -AutoSize
 
 # ------------------------------------------------------------------------------
-# Bundle the build archive and the database scripts into app.zip.
+# Bundle the build archive, the database scripts and the schema files into app.zip.
 # ------------------------------------------------------------------------------
-$dbScripts = @(
+$extraFiles = @(
     (Join-Path $PSScriptRoot 'install_postgres_and_extension.sh'),
     (Join-Path $PSScriptRoot 'create_simple_db.sh'),
-    (Join-Path $PSScriptRoot 'create_timescale_db.sh')
+    (Join-Path $PSScriptRoot 'create_timescale_db.sh'),
+    (Join-Path $repoRoot 'simple_db/sensor_db.sql'),
+    (Join-Path $repoRoot 'timescale_db/sensor_timescale_db.sql')
 )
 
-foreach ($script in $dbScripts) {
-    if (-not (Test-Path $script)) {
-        throw "Expected script not found: $script"
+foreach ($file in $extraFiles) {
+    if (-not (Test-Path $file)) {
+        throw "Expected file not found: $file"
     }
 }
 
@@ -152,7 +155,7 @@ if (Test-Path $AppZipPath) {
 
 Write-Host ""
 Write-Host "[+] Creating distribution archive: $AppZipPath"
-Compress-Archive -Path ($ZipPath + $dbScripts) -DestinationPath $AppZipPath -Force
+Compress-Archive -Path ($ZipPath + $extraFiles) -DestinationPath $AppZipPath -Force
 
 Write-Host "[+] Distribution archive contents:"
 [System.IO.Compression.ZipFile]::OpenRead($AppZipPath).Entries |
