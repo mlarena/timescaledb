@@ -53,7 +53,18 @@ sudo ./create_timescale_db.sh   # база timescale_db (timescaledb + pg_stat_s
 Обе базы создаются с расширением `pg_stat_statements` для сбора статистики
 запросов. Скрипты идемпотентны — повторный запуск безопасен.
 
-### Загрузка схемы
+### Схема применяется автоматически
+
+Каждый create-скрипт сам разворачивает схему и устанавливает функцию-генератор
+данных:
+
+- `create_simple_db.sh` применяет `sensor_db.sql`;
+- `create_timescale_db.sh` применяет `sensor_timescale_db.sql`;
+- оба устанавливают функцию `generate_sensor_data(p_rows)` из
+  `data_generation/generate_sensor_data.sql`.
+
+Схема пропускается, если таблицы уже существуют. Отдельная загрузка вручную
+нужна только при нестандартном сценарии:
 
 ```bash
 # Из корня репозитория
@@ -138,11 +149,20 @@ dotnet publish SensorDataGenerator/SensorDataGenerator.csproj `
 
 ## 3. Заливка больших объёмов данных
 
-SQL-скрипты в `data_generation/` создают функцию `generate_sensor_data(p_rows)`,
-которая вставляет `p_rows` случайных строк **в каждую** таблицу данных.
+Функция `generate_sensor_data(p_rows)` уже установлена в обеих базах
+create-скриптами (см. раздел 1). Она вставляет `p_rows` случайных строк
+**в каждую** таблицу данных.
 
 ```bash
 # Пример: 1 000 000 строк на таблицу (итого ~5 млн)
+psql -h localhost -U postgres -d simple_db \
+    -c "SELECT public.generate_sensor_data(1000000);"
+```
+
+Готовые скрипты по объёмам лежат в `data_generation/` и просто вызывают эту
+функцию (перед запуском пересоздают её из `generate_sensor_data.sql`):
+
+```bash
 psql -h localhost -U postgres -d simple_db -f data_generation/generate_1000000.sql
 ```
 
@@ -343,25 +363,22 @@ SELECT add_retention_policy('public."DOVData"', INTERVAL '2 years');
 ## 5. Быстрый старт (полный цикл)
 
 ```bash
-# 1. Установка и создание баз
+# 1. Установка и создание баз (схема и функция генератора ставятся автоматически)
 cd scripts && chmod +x *.sh
 sudo ./install_postgres_and_extension.sh
 sudo ./create_simple_db.sh
 sudo ./create_timescale_db.sh
 cd ..
 
-# 2. Схема
-sudo -u postgres psql -d simple_db    -f simple_db/sensor_db.sql
-sudo -u postgres psql -d timescale_db -f timescale_db/sensor_timescale_db.sql
+# 2. Тестовые данные (функция уже установлена create-скриптом)
+psql -h localhost -U postgres -d timescale_db \
+    -c "SELECT public.generate_sensor_data(1000000);"
 
-# 3. Тестовые данные
-psql -h localhost -U postgres -d timescale_db -f data_generation/generate_1000000.sql
-
-# 4. Нагрузка в реальном времени (собранный генератор)
+# 3. Нагрузка в реальном времени (собранный генератор)
 ./release/linux-x64/SensorDataGenerator
 
-# 5. Замеры
+# 4. Замеры
 psql -h localhost -U postgres -d timescale_db
-#   \timing on
+#   	iming on
 #   EXPLAIN (ANALYZE, BUFFERS) SELECT ...
 ```

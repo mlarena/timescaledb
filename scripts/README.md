@@ -2,16 +2,21 @@
 
 Набор bash-скриптов для чистого **Debian**: установка PostgreSQL + TimescaleDB
 и создание двух баз данных — `simple_db` (обычный PostgreSQL) и `timescale_db`
-(с расширением TimescaleDB). В обеих базах включается `pg_stat_statements`.
+(с расширением TimescaleDB). В обеих базах включается `pg_stat_statements`,
+разворачивается схема и устанавливается функция генерации тестовых данных.
 
 ## Состав каталога
 
 | Файл | Назначение |
 |------|------------|
 | `install_postgres_and_extension.sh` | Устанавливает PostgreSQL и TimescaleDB, настраивает `shared_preload_libraries`, перезапускает сервер. Базы **не** создаёт. |
-| `create_simple_db.sh` | Создаёт базу `simple_db` и включает в ней `pg_stat_statements`. |
-| `create_timescale_db.sh` | Создаёт базу `timescale_db` и включает в ней `timescaledb` и `pg_stat_statements`. |
+| `create_simple_db.sh` | Создаёт базу `simple_db`, включает `pg_stat_statements`, применяет `sensor_db.sql` и ставит функцию-генератор. |
+| `create_timescale_db.sh` | Создаёт базу `timescale_db`, включает `timescaledb` и `pg_stat_statements`, применяет `sensor_timescale_db.sql` и ставит функцию-генератор. |
 | `README.md` | Этот файл. |
+
+Create-скрипты ищут SQL-файлы рядом с собой (плоский layout из `app.zip`) или
+в структуре репозитория (`simple_db/`, `timescale_db/`, `data_generation/`),
+поэтому работают и из архива, и из исходников.
 
 ## Требования
 
@@ -60,18 +65,25 @@ sudo ./create_timescale_db.sh
 
 - Создаёт базу `simple_db`, если её ещё нет.
 - Выполняет `CREATE EXTENSION IF NOT EXISTS pg_stat_statements;`.
-- Показывает список расширений базы.
+- Применяет схему из `sensor_db.sql` (пропускается, если таблицы уже есть).
+- Устанавливает функцию `generate_sensor_data(p_rows)` из
+  `generate_sensor_data.sql`.
+- Показывает список расширений и таблиц базы.
 
 ### `create_timescale_db.sh`
 
 - Создаёт базу `timescale_db`, если её ещё нет.
 - Выполняет `CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;`.
 - Выполняет `CREATE EXTENSION IF NOT EXISTS pg_stat_statements;`.
-- Показывает список расширений и версию TimescaleDB.
+- Применяет схему из `sensor_timescale_db.sql` (пропускается, если таблицы уже есть).
+- Устанавливает функцию `generate_sensor_data(p_rows)` из
+  `generate_sensor_data.sql`.
+- Показывает список расширений, версию TimescaleDB и список гипертаблиц.
 
-## Загрузка схемы (опционально)
+## Схема и тестовые данные
 
-После создания баз можно загрузить схему и справочные данные:
+Схема разворачивается **автоматически** при создании базы. Ручной запуск нужен
+только для нестандартных случаев:
 
 ```bash
 # Из корня репозитория
@@ -83,8 +95,14 @@ sudo -u postgres psql -d simple_db -f simple_db/sensor_db.sql
 sudo -u postgres psql -d timescale_db -f timescale_db/sensor_timescale_db.sql
 ```
 
-Скрипты генерации тестовых данных находятся в `data_generation/`
-(см. `data_generation/generate_sensor_data.sql`).
+После создания баз доступна функция заполнения тестовыми данными:
+
+```sql
+-- Вставить по N строк в каждую таблицу данных
+SELECT public.generate_sensor_data(100000);
+```
+
+Готовые скрипты по объёмам лежат в `data_generation/` (100k, 500k, 1M, 2M, 5M).
 
 ## Подключение
 

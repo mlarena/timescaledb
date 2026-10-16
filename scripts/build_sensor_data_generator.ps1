@@ -11,6 +11,9 @@
     The project is located by a path relative to this script, so the script can
     be run from any working directory.
 
+    Before building, the entire <repo root>/release directory is removed so the
+    result never contains stale artifacts.
+
 .PARAMETER Runtime
     Target runtime identifier. Default: linux-x64.
 
@@ -28,8 +31,8 @@
     Path of the distribution archive. Default: <repo root>/release/app.zip.
     The archive bundles timescaledb_test.zip together with the database
     scripts (install_postgres_and_extension.sh, create_simple_db.sh,
-    create_timescale_db.sh) and the schema files (sensor_db.sql,
-    sensor_timescale_db.sql).
+    create_timescale_db.sh) and the SQL files (sensor_db.sql,
+    sensor_timescale_db.sql, generate_sensor_data.sql).
 
 .EXAMPLE
     ./build_sensor_data_generator.ps1
@@ -68,16 +71,19 @@ if ([string]::IsNullOrWhiteSpace($AppZipPath)) {
     $AppZipPath = Join-Path $repoRoot 'release/app.zip'
 }
 
+$releaseDir = Join-Path $repoRoot 'release'
+
 Write-Host "[+] Project:       $project"
 Write-Host "[+] Configuration: $Configuration"
 Write-Host "[+] Runtime:       $Runtime"
 Write-Host "[+] Output:        $OutputDir"
 
-# Clean the output directory to avoid stale artifacts.
-if (Test-Path $OutputDir) {
-    Write-Host "[+] Cleaning output directory..."
-    Remove-Item -Recurse -Force $OutputDir
+# Clean the whole release directory before building to avoid stale artifacts.
+if (Test-Path $releaseDir) {
+    Write-Host "[+] Cleaning release directory: $releaseDir"
+    Remove-Item -Recurse -Force $releaseDir
 }
+New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 dotnet publish $project `
@@ -136,7 +142,8 @@ $extraFiles = @(
     (Join-Path $PSScriptRoot 'create_simple_db.sh'),
     (Join-Path $PSScriptRoot 'create_timescale_db.sh'),
     (Join-Path $repoRoot 'simple_db/sensor_db.sql'),
-    (Join-Path $repoRoot 'timescale_db/sensor_timescale_db.sql')
+    (Join-Path $repoRoot 'timescale_db/sensor_timescale_db.sql'),
+    (Join-Path $repoRoot 'data_generation/generate_sensor_data.sql')
 )
 
 foreach ($file in $extraFiles) {

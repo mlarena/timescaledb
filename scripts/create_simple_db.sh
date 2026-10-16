@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # ==============================================================================
-# Creates the plain PostgreSQL database "simple_db" (without TimescaleDB)
-# and enables the pg_stat_statements extension in it.
+# Creates the plain PostgreSQL database "simple_db" (without TimescaleDB),
+# enables pg_stat_statements, applies the schema and installs the data
+# generator function.
 #
 # Prerequisites: run install_postgres_and_extension.sh first (it installs
 # PostgreSQL and preloads pg_stat_statements).
@@ -49,6 +50,54 @@ sudo -u postgres psql -d "${DB_NAME}" -v ON_ERROR_STOP=1 \
     -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
 
 # ------------------------------------------------------------------------------
+# Locate the bundled files.
+# In the flat app.zip layout they sit next to this script; in the repository
+# layout they live in simple_db/ and data_generation/.
+# ------------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+find_file() {
+    local name="$1"; shift
+    local candidate
+    for candidate in "$@"; do
+        if [[ -f "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+SCHEMA_FILE="$(find_file sensor_db.sql \
+    "${SCRIPT_DIR}/sensor_db.sql" \
+    "${SCRIPT_DIR}/../simple_db/sensor_db.sql")" \
+    || error "sensor_db.sql not found (looked next to the script and in ../simple_db)."
+
+GEN_FILE="$(find_file generate_sensor_data.sql \
+    "${SCRIPT_DIR}/generate_sensor_data.sql" \
+    "${SCRIPT_DIR}/../data_generation/generate_sensor_data.sql")" || true
+
+# ------------------------------------------------------------------------------
+# Apply the schema (skipped if it is already present)
+# ------------------------------------------------------------------------------
+if sudo -u postgres psql -d "${DB_NAME}" -tAc "SELECT to_regclass('public.\"Sensor\"') IS NOT NULL;" | grep -q t; then
+    warn "Schema already present in '${DB_NAME}', skipping."
+else
+    log "Applying schema from '${SCHEMA_FILE}'..."
+    sudo -u postgres psql -d "${DB_NAME}" -v ON_ERROR_STOP=1 -f "${SCHEMA_FILE}"
+fi
+
+# ------------------------------------------------------------------------------
+# Install the data generator function (CREATE OR REPLACE, safe to re-run)
+# ------------------------------------------------------------------------------
+if [[ -n "$GEN_FILE" ]]; then
+    log "Installing the data generator function from '${GEN_FILE}'..."
+    sudo -u postgres psql -d "${DB_NAME}" -v ON_ERROR_STOP=1 -f "${GEN_FILE}"
+else
+    warn "generate_sensor_data.sql not found, skipping the generator function."
+fi
+
+# ------------------------------------------------------------------------------
 # Verification
 # ------------------------------------------------------------------------------
 log "=== VERIFICATION ==="
@@ -57,5 +106,10 @@ echo "Extensions in '${DB_NAME}':"
 sudo -u postgres psql -d "${DB_NAME}" -c "\dx"
 
 echo ""
+echo "Tables in '${DB_NAME}':"
+sudo -u postgres psql -d "${DB_NAME}" -c "\dt public.*"
+
+echo ""
 log "Database '${DB_NAME}' is ready."
 echo "Connect with:  psql -h localhost -U postgres -d ${DB_NAME}"
+echo "Fill test data:  SELECT public.generate_sensor_data(100000);"
