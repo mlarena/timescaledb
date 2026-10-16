@@ -1,3 +1,25 @@
+-- ============================================================
+-- TimescaleDB
+-- ============================================================
+-- Enable the extension before creating the hypertables below.
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+-- The five sensor data tables are created as hypertables with the columnstore
+-- (compression) enabled using the declarative CREATE TABLE ... WITH syntax.
+--
+-- Design notes:
+--   * tsdb.partition_column = "ReceivedAt" (ingestion time) keeps writes
+--     append-only to the newest chunk. There are two timestamptz columns in
+--     these tables, so the partition column must be set explicitly.
+--   * tsdb.chunk_interval = 1 day -> one chunk per day.
+--   * tsdb.segmentby = "SensorId" -> columnstore is segmented per sensor.
+--   * tsdb.orderby   = "ReceivedAt" DESC -> columnstore sort order; also
+--     creates an implicit sparse index on the orderby column.
+--   * tsdb.columnstore defaults to true, so a columnstore policy is created
+--     automatically (compress chunks older than the chunk interval).
+--   * Hypertables require every PRIMARY KEY / UNIQUE constraint to include the
+--     partition column. These tables are append-only telemetry, so the
+--     surrogate primary key is dropped to keep ingestion fast.
 
 
 CREATE TABLE public."SensorType" (
@@ -133,21 +155,27 @@ CREATE INDEX "IX_MonitoringPost_IsActive" ON public."MonitoringPost" ("IsActive"
 
 
 CREATE TABLE public."DOVData" (
-	"Id" serial4 NOT NULL,
+	"Id" bigserial,
 	"SensorId" int4 NOT NULL,
 	"ReceivedAt" timestamptz DEFAULT now() NOT NULL,
 	"DataTimestamp" timestamptz NOT NULL,
 	"VisibleRange" numeric(10, 2) NULL,
 	"BrightFlag" int4 NULL,
 	"MonitoringPostId" int4 NULL,
-	CONSTRAINT "DOVData_pkey" PRIMARY KEY ("Id"),
 	CONSTRAINT "DOVData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
 	CONSTRAINT "DOVData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
+) WITH (
+	tsdb.hypertable,
+	tsdb.columnstore = true,
+	tsdb.partition_column = '"ReceivedAt"',
+	tsdb.chunk_interval = '1 day',
+	tsdb.segmentby = '"SensorId"',
+	tsdb.orderby = '"ReceivedAt" DESC'
 );
 
 
 CREATE TABLE public."DSPDData" (
-	"Id" serial4 NOT NULL,
+	"Id" bigserial,
 	"SensorId" int4 NOT NULL,
 	"ReceivedAt" timestamptz DEFAULT now() NOT NULL,
 	"DataTimestamp" timestamptz NOT NULL,
@@ -170,14 +198,20 @@ CREATE TABLE public."DSPDData" (
 	"DistanceToSurface" numeric(12, 2) NULL,
 	"IsGpsValid" bool DEFAULT true NULL,
 	"MonitoringPostId" int4 NULL,
-	CONSTRAINT "DSPDData_pkey" PRIMARY KEY ("Id"),
 	CONSTRAINT "DSPDData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
 	CONSTRAINT "DSPDData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
+) WITH (
+	tsdb.hypertable,
+	tsdb.columnstore = true,
+	tsdb.partition_column = '"ReceivedAt"',
+	tsdb.chunk_interval = '1 day',
+	tsdb.segmentby = '"SensorId"',
+	tsdb.orderby = '"ReceivedAt" DESC'
 );
 
 
 CREATE TABLE public."DustData" (
-	"Id" serial4 NOT NULL,
+	"Id" bigserial,
 	"SensorId" int4 NOT NULL,
 	"ReceivedAt" timestamptz DEFAULT now() NOT NULL,
 	"DataTimestamp" timestamptz NOT NULL,
@@ -193,13 +227,19 @@ CREATE TABLE public."DustData" (
 	"LaserStatus" int4 NULL,
 	"SupplyVoltage" numeric(10, 2) NULL,
 	"MonitoringPostId" int4 NULL,
-	CONSTRAINT "DustData_pkey" PRIMARY KEY ("Id"),
 	CONSTRAINT "DustData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
 	CONSTRAINT "DustData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
+) WITH (
+	tsdb.hypertable,
+	tsdb.columnstore = true,
+	tsdb.partition_column = '"ReceivedAt"',
+	tsdb.chunk_interval = '1 day',
+	tsdb.segmentby = '"SensorId"',
+	tsdb.orderby = '"ReceivedAt" DESC'
 );
 
 CREATE TABLE public."IWSData" (
-	"Id" serial4 NOT NULL,
+	"Id" bigserial,
 	"SensorId" int4 NOT NULL,
 	"ReceivedAt" timestamptz DEFAULT now() NOT NULL,
 	"DataTimestamp" timestamptz NOT NULL,
@@ -229,14 +269,20 @@ CREATE TABLE public."IWSData" (
 	"Pitch" numeric(5, 1) NULL,
 	"WeAreFine" int4 NULL,
 	"MonitoringPostId" int4 NULL,
-	CONSTRAINT "IWSData_pkey" PRIMARY KEY ("Id"),
 	CONSTRAINT "IWSData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
 	CONSTRAINT "IWSData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
+) WITH (
+	tsdb.hypertable,
+	tsdb.columnstore = true,
+	tsdb.partition_column = '"ReceivedAt"',
+	tsdb.chunk_interval = '1 day',
+	tsdb.segmentby = '"SensorId"',
+	tsdb.orderby = '"ReceivedAt" DESC'
 );
 
 
 CREATE TABLE public."MUEKSData" (
-	"Id" serial4 NOT NULL,
+	"Id" bigserial,
 	"SensorId" int4 NOT NULL,
 	"ReceivedAt" timestamptz DEFAULT now() NOT NULL,
 	"DataTimestamp" timestamptz NOT NULL,
@@ -259,9 +305,15 @@ CREATE TABLE public."MUEKSData" (
 	"OwenCh1" numeric(5, 2) NULL,
 	"OwenCh2" numeric(5, 2) NULL,
 	"TempExt" numeric(5, 2) NULL,
-	CONSTRAINT "MUEKSData_pkey" PRIMARY KEY ("Id"),
 	CONSTRAINT "MUEKSData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
 	CONSTRAINT "MUEKSData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
+) WITH (
+	tsdb.hypertable,
+	tsdb.columnstore = true,
+	tsdb.partition_column = '"ReceivedAt"',
+	tsdb.chunk_interval = '1 day',
+	tsdb.segmentby = '"SensorId"',
+	tsdb.orderby = '"ReceivedAt" DESC'
 );
 
 
@@ -269,6 +321,13 @@ CREATE TABLE public."MUEKSData" (
 -- ============================================================
 -- Indexes for sensor data tables
 -- ============================================================
+-- TimescaleDB automatically creates a descending index on the partition column
+-- ("ReceivedAt") for every hypertable, so it is not created here.
+--
+-- The indexes below live on the rowstore (uncompressed) chunks. Once a chunk
+-- is converted to the columnstore, its rowstore indexes are dropped and the
+-- segmentby ("SensorId") plus the orderby sparse index take over filtering.
+--
 -- Composite index (SensorId, DataTimestamp DESC) covers the most common
 -- query pattern: latest readings for a given sensor. The leading SensorId
 -- column also serves as the index for the SensorId foreign key.
