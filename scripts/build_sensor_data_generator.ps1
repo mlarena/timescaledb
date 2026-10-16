@@ -131,8 +131,14 @@ Compress-Archive -Path $exe, $config -DestinationPath $ZipPath -Force
 
 Write-Host "[+] Archive contents:"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::OpenRead($ZipPath).Entries |
-    Select-Object Name, Length | Format-Table -AutoSize
+$zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+try {
+    $zip.Entries | Select-Object Name, Length | Format-Table -AutoSize
+}
+finally {
+    # Dispose the archive so the file handle is released before the next step.
+    $zip.Dispose()
+}
 
 # ------------------------------------------------------------------------------
 # Bundle the build archive, the database scripts and the schema files into app.zip.
@@ -162,11 +168,17 @@ if (Test-Path $AppZipPath) {
 
 Write-Host ""
 Write-Host "[+] Creating distribution archive: $AppZipPath"
-Compress-Archive -Path ($ZipPath + $extraFiles) -DestinationPath $AppZipPath -Force
+$archiveItems = @($ZipPath) + $extraFiles
+Compress-Archive -Path $archiveItems -DestinationPath $AppZipPath -Force
 
 Write-Host "[+] Distribution archive contents:"
-[System.IO.Compression.ZipFile]::OpenRead($AppZipPath).Entries |
-    Select-Object Name, Length | Format-Table -AutoSize
+$appZip = [System.IO.Compression.ZipFile]::OpenRead($AppZipPath)
+try {
+    $appZip.Entries | Select-Object Name, Length | Format-Table -AutoSize
+}
+finally {
+    $appZip.Dispose()
+}
 
 Write-Host ""
 Write-Host "Deploy to Debian (example):"
