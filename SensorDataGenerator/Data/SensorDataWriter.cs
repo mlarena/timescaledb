@@ -30,13 +30,14 @@ public sealed class SensorDataWriter
     {
         const string sql = """
             INSERT INTO public."DOVData"
-                ("SensorId", "DataTimestamp", "VisibleRange", "BrightFlag", "MonitoringPostId")
+                ("SensorId", "ReceivedAt", "DataTimestamp", "VisibleRange", "BrightFlag", "MonitoringPostId")
             VALUES
-                (@sensorId, @dataTimestamp, @visibleRange, @brightFlag, @monitoringPostId);
+                (@sensorId, @receivedAt, @dataTimestamp, @visibleRange, @brightFlag, @monitoringPostId);
             """;
 
         await using var command = _dataSource.CreateCommand(sql);
         command.Parameters.AddWithValue("sensorId", sensor.Id);
+        command.Parameters.AddWithValue("receivedAt", timestampUtc);
         command.Parameters.AddWithValue("dataTimestamp", timestampUtc);
         command.Parameters.AddWithValue("visibleRange", RandomValues.Decimal(10, 2000, 2));
         command.Parameters.AddWithValue("brightFlag", RandomValues.Int(0, 2));
@@ -49,12 +50,12 @@ public sealed class SensorDataWriter
     {
         const string sql = """
             INSERT INTO public."DSPDData"
-                ("SensorId", "DataTimestamp", "Grip", "Shake", "UPower", "TemperatureCase",
+                ("SensorId", "ReceivedAt", "DataTimestamp", "Grip", "Shake", "UPower", "TemperatureCase",
                  "TemperatureRoad", "HeightH2O", "HeightIce", "HeightSnow", "PercentICE", "PercentPGM",
                  "RoadStatus", "AngleToRoad", "TemperatureFreezePGM", "NeedCalibration",
                  "GPSLatitude", "GPSLongitude", "DistanceToSurface", "IsGpsValid", "MonitoringPostId")
             VALUES
-                (@sensorId, @dataTimestamp, @grip, @shake, @uPower, @temperatureCase,
+                (@sensorId, @receivedAt, @dataTimestamp, @grip, @shake, @uPower, @temperatureCase,
                  @temperatureRoad, @heightH2O, @heightIce, @heightSnow, @percentIce, @percentPgm,
                  @roadStatus, @angleToRoad, @temperatureFreezePgm, @needCalibration,
                  @gpsLatitude, @gpsLongitude, @distanceToSurface, @isGpsValid, @monitoringPostId);
@@ -62,6 +63,7 @@ public sealed class SensorDataWriter
 
         await using var command = _dataSource.CreateCommand(sql);
         command.Parameters.AddWithValue("sensorId", sensor.Id);
+        command.Parameters.AddWithValue("receivedAt", timestampUtc);
         command.Parameters.AddWithValue("dataTimestamp", timestampUtc);
         command.Parameters.AddWithValue("grip", RandomValues.Decimal(0, 1, 2));
         command.Parameters.AddWithValue("shake", RandomValues.Decimal(0, 100, 2));
@@ -90,17 +92,18 @@ public sealed class SensorDataWriter
     {
         const string sql = """
             INSERT INTO public."DustData"
-                ("SensorId", "DataTimestamp", "PM10Act", "PM25Act", "PM1Act", "PM10AWG", "PM25AWG",
+                ("SensorId", "ReceivedAt", "DataTimestamp", "PM10Act", "PM25Act", "PM1Act", "PM10AWG", "PM25AWG",
                  "PM1AWG", "FlowProbe", "TemperatureProbe", "HumidityProbe", "LaserStatus",
                  "SupplyVoltage", "MonitoringPostId")
             VALUES
-                (@sensorId, @dataTimestamp, @pm10Act, @pm25Act, @pm1Act, @pm10Awg, @pm25Awg,
+                (@sensorId, @receivedAt, @dataTimestamp, @pm10Act, @pm25Act, @pm1Act, @pm10Awg, @pm25Awg,
                  @pm1Awg, @flowProbe, @temperatureProbe, @humidityProbe, @laserStatus,
                  @supplyVoltage, @monitoringPostId);
             """;
 
         await using var command = _dataSource.CreateCommand(sql);
         command.Parameters.AddWithValue("sensorId", sensor.Id);
+        command.Parameters.AddWithValue("receivedAt", timestampUtc);
         command.Parameters.AddWithValue("dataTimestamp", timestampUtc);
         command.Parameters.AddWithValue("pm10Act", RandomValues.Decimal(0, 500, 2));
         command.Parameters.AddWithValue("pm25Act", RandomValues.Decimal(0, 500, 2));
@@ -122,14 +125,14 @@ public sealed class SensorDataWriter
     {
         const string sql = """
             INSERT INTO public."IWSData"
-                ("SensorId", "DataTimestamp", "EnvTemperature", "Humidity", "DewPoint", "PressureHPa",
+                ("SensorId", "ReceivedAt", "DataTimestamp", "EnvTemperature", "Humidity", "DewPoint", "PressureHPa",
                  "PressureQNHHPa", "PressureMmHg", "WindSpeed", "WindDirection", "WindVSound",
                  "PrecipitationType", "PrecipitationIntensity", "PrecipitationQuantity",
                  "PrecipitationElapsed", "PrecipitationPeriod", "CO2Level", "SupplyVoltage",
                  "Latitude", "Longitude", "Altitude", "KSP", "GPSSpeed", "AccelerationStDev",
                  "Roll", "Pitch", "WeAreFine", "MonitoringPostId")
             VALUES
-                (@sensorId, @dataTimestamp, @envTemperature, @humidity, @dewPoint, @pressureHPa,
+                (@sensorId, @receivedAt, @dataTimestamp, @envTemperature, @humidity, @dewPoint, @pressureHPa,
                  @pressureQnhHPa, @pressureMmHg, @windSpeed, @windDirection, @windVSound,
                  @precipitationType, @precipitationIntensity, @precipitationQuantity,
                  @precipitationElapsed, @precipitationPeriod, @co2Level, @supplyVoltage,
@@ -139,6 +142,7 @@ public sealed class SensorDataWriter
 
         await using var command = _dataSource.CreateCommand(sql);
         command.Parameters.AddWithValue("sensorId", sensor.Id);
+        command.Parameters.AddWithValue("receivedAt", timestampUtc);
         command.Parameters.AddWithValue("dataTimestamp", timestampUtc);
         command.Parameters.AddWithValue("envTemperature", RandomValues.Decimal(-40, 50, 2));
         command.Parameters.AddWithValue("humidity", RandomValues.Decimal(0, 100, 2));
@@ -174,12 +178,12 @@ public sealed class SensorDataWriter
     {
         const string sql = """
             INSERT INTO public."MUEKSData"
-                ("SensorId", "DataTimestamp", "TemperatureBox", "UPowerIn12B", "UOut12B", "IOut12B",
+                ("SensorId", "ReceivedAt", "DataTimestamp", "TemperatureBox", "UPowerIn12B", "UOut12B", "IOut12B",
                  "IOut48B", "UAkb", "IAkb", "Sens220B", "WhAkb", "VisibleRange", "DoorStatus",
                  "TdsH", "TdsTds", "TkosaT1", "TkosaT3", "MonitoringPostId",
                  "OwenCh1", "OwenCh2", "TempExt")
             VALUES
-                (@sensorId, @dataTimestamp, @temperatureBox, @uPowerIn12B, @uOut12B, @iOut12B,
+                (@sensorId, @receivedAt, @dataTimestamp, @temperatureBox, @uPowerIn12B, @uOut12B, @iOut12B,
                  @iOut48B, @uAkb, @iAkb, @sens220B, @whAkb, @visibleRange, @doorStatus,
                  @tdsH, @tdsTds, @tkosaT1, @tkosaT3, @monitoringPostId,
                  @owenCh1, @owenCh2, @tempExt);
@@ -187,6 +191,7 @@ public sealed class SensorDataWriter
 
         await using var command = _dataSource.CreateCommand(sql);
         command.Parameters.AddWithValue("sensorId", sensor.Id);
+        command.Parameters.AddWithValue("receivedAt", timestampUtc);
         command.Parameters.AddWithValue("dataTimestamp", timestampUtc);
         command.Parameters.AddWithValue("temperatureBox", RandomValues.Decimal(-40, 60, 2));
         command.Parameters.AddWithValue("uPowerIn12B", RandomValues.Decimal(10, 15, 2));
