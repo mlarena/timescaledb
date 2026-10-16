@@ -140,7 +140,9 @@ CREATE TABLE public."DOVData" (
 	"VisibleRange" numeric(10, 2) NULL,
 	"BrightFlag" int4 NULL,
 	"MonitoringPostId" int4 NULL,
-	CONSTRAINT "DOVData_pkey" PRIMARY KEY ("Id")
+	CONSTRAINT "DOVData_pkey" PRIMARY KEY ("Id"),
+	CONSTRAINT "DOVData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
+	CONSTRAINT "DOVData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
 );
 
 
@@ -168,7 +170,9 @@ CREATE TABLE public."DSPDData" (
 	"DistanceToSurface" numeric(12, 2) NULL,
 	"IsGpsValid" bool DEFAULT true NULL,
 	"MonitoringPostId" int4 NULL,
-	CONSTRAINT "DSPDData_pkey" PRIMARY KEY ("Id")
+	CONSTRAINT "DSPDData_pkey" PRIMARY KEY ("Id"),
+	CONSTRAINT "DSPDData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
+	CONSTRAINT "DSPDData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
 );
 
 
@@ -189,7 +193,9 @@ CREATE TABLE public."DustData" (
 	"LaserStatus" int4 NULL,
 	"SupplyVoltage" numeric(10, 2) NULL,
 	"MonitoringPostId" int4 NULL,
-	CONSTRAINT "DustData_pkey" PRIMARY KEY ("Id")
+	CONSTRAINT "DustData_pkey" PRIMARY KEY ("Id"),
+	CONSTRAINT "DustData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
+	CONSTRAINT "DustData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
 );
 
 CREATE TABLE public."IWSData" (
@@ -223,7 +229,9 @@ CREATE TABLE public."IWSData" (
 	"Pitch" numeric(5, 1) NULL,
 	"WeAreFine" int4 NULL,
 	"MonitoringPostId" int4 NULL,
-	CONSTRAINT "IWSData_pkey" PRIMARY KEY ("Id")
+	CONSTRAINT "IWSData_pkey" PRIMARY KEY ("Id"),
+	CONSTRAINT "IWSData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
+	CONSTRAINT "IWSData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
 );
 
 
@@ -251,8 +259,38 @@ CREATE TABLE public."MUEKSData" (
 	"OwenCh1" numeric(5, 2) NULL,
 	"OwenCh2" numeric(5, 2) NULL,
 	"TempExt" numeric(5, 2) NULL,
-	CONSTRAINT "MUEKSData_pkey" PRIMARY KEY ("Id")
+	CONSTRAINT "MUEKSData_pkey" PRIMARY KEY ("Id"),
+	CONSTRAINT "MUEKSData_SensorId_fkey" FOREIGN KEY ("SensorId") REFERENCES public."Sensor" ("Id"),
+	CONSTRAINT "MUEKSData_MonitoringPostId_fkey" FOREIGN KEY ("MonitoringPostId") REFERENCES public."MonitoringPost" ("Id")
 );
+
+
+
+-- ============================================================
+-- Indexes for sensor data tables
+-- ============================================================
+-- Composite index (SensorId, DataTimestamp DESC) covers the most common
+-- query pattern: latest readings for a given sensor. The leading SensorId
+-- column also serves as the index for the SensorId foreign key.
+CREATE INDEX "IX_DOVData_SensorId_DataTimestamp"   ON public."DOVData"   ("SensorId", "DataTimestamp" DESC);
+CREATE INDEX "IX_DSPDData_SensorId_DataTimestamp"  ON public."DSPDData"  ("SensorId", "DataTimestamp" DESC);
+CREATE INDEX "IX_DustData_SensorId_DataTimestamp"  ON public."DustData"  ("SensorId", "DataTimestamp" DESC);
+CREATE INDEX "IX_IWSData_SensorId_DataTimestamp"   ON public."IWSData"   ("SensorId", "DataTimestamp" DESC);
+CREATE INDEX "IX_MUEKSData_SensorId_DataTimestamp" ON public."MUEKSData" ("SensorId", "DataTimestamp" DESC);
+
+-- Range scans over the whole table by time
+CREATE INDEX "IX_DOVData_DataTimestamp"   ON public."DOVData"   ("DataTimestamp" DESC);
+CREATE INDEX "IX_DSPDData_DataTimestamp"  ON public."DSPDData"  ("DataTimestamp" DESC);
+CREATE INDEX "IX_DustData_DataTimestamp"  ON public."DustData"  ("DataTimestamp" DESC);
+CREATE INDEX "IX_IWSData_DataTimestamp"   ON public."IWSData"   ("DataTimestamp" DESC);
+CREATE INDEX "IX_MUEKSData_DataTimestamp" ON public."MUEKSData" ("DataTimestamp" DESC);
+
+-- Foreign keys on the denormalized MonitoringPostId column
+CREATE INDEX "IX_DOVData_MonitoringPostId"   ON public."DOVData"   ("MonitoringPostId");
+CREATE INDEX "IX_DSPDData_MonitoringPostId"  ON public."DSPDData"  ("MonitoringPostId");
+CREATE INDEX "IX_DustData_MonitoringPostId"  ON public."DustData"  ("MonitoringPostId");
+CREATE INDEX "IX_IWSData_MonitoringPostId"   ON public."IWSData"   ("MonitoringPostId");
+CREATE INDEX "IX_MUEKSData_MonitoringPostId" ON public."MUEKSData" ("MonitoringPostId");
 
 
 
