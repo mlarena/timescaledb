@@ -5,7 +5,7 @@ set -euo pipefail
 # Creates the plain PostgreSQL database "simple_db" (without TimescaleDB)
 # and enables the pg_stat_statements extension in it.
 #
-# Prerequisites: run install_postges_and_extension.sh first (it installs
+# Prerequisites: run install_postgres_and_extension.sh first (it installs
 # PostgreSQL and preloads pg_stat_statements).
 # Requires root or sudo.
 # ==============================================================================
@@ -28,7 +28,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 if ! command -v psql &> /dev/null; then
-    error "psql not found. Run install_postges_and_extension.sh first."
+    error "psql not found. Run install_postgres_and_extension.sh first."
 fi
 
 # ------------------------------------------------------------------------------

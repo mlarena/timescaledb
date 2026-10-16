@@ -5,7 +5,7 @@ set -euo pipefail
 # Creates the TimescaleDB-enabled database "timescale_db" and enables the
 # timescaledb and pg_stat_statements extensions in it.
 #
-# Prerequisites: run install_postges_and_extension.sh first (it installs
+# Prerequisites: run install_postgres_and_extension.sh first (it installs
 # PostgreSQL and TimescaleDB, and preloads both libraries).
 # Requires root or sudo.
 # ==============================================================================
@@ -28,7 +28,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 if ! command -v psql &> /dev/null; then
-    error "psql not found. Run install_postges_and_extension.sh first."
+    error "psql not found. Run install_postgres_and_extension.sh first."
 fi
 
 # ------------------------------------------------------------------------------

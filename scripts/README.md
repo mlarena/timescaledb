@@ -8,7 +8,7 @@
 
 | Файл | Назначение |
 |------|------------|
-| `install_postges_and_extension.sh` | Устанавливает PostgreSQL и TimescaleDB, настраивает `shared_preload_libraries`, перезапускает сервер. Базы **не** создаёт. |
+| `install_postgres_and_extension.sh` | Устанавливает PostgreSQL и TimescaleDB, настраивает `shared_preload_libraries`, перезапускает сервер. Базы **не** создаёт. |
 | `create_simple_db.sh` | Создаёт базу `simple_db` и включает в ней `pg_stat_statements`. |
 | `create_timescale_db.sh` | Создаёт базу `timescale_db` и включает в ней `timescaledb` и `pg_stat_statements`. |
 | `README.md` | Этот файл. |
@@ -26,7 +26,7 @@ cd scripts
 chmod +x *.sh
 
 # 1. Установка PostgreSQL + TimescaleDB (один раз)
-sudo ./install_postges_and_extension.sh
+sudo ./install_postgres_and_extension.sh
 
 # 2. Создание баз (можно в любом порядке, каждую — один раз)
 sudo ./create_simple_db.sh
@@ -38,7 +38,7 @@ sudo ./create_timescale_db.sh
 
 ## Что делает каждый скрипт
 
-### `install_postges_and_extension.sh`
+### `install_postgres_and_extension.sh`
 
 1. Обновляет систему, ставит зависимости (`curl`, `gnupg`, `lsb-release`, `wget`).
 2. Подключает официальный репозиторий PostgreSQL (PGDG) и ставит
@@ -137,7 +137,7 @@ SELECT hypertable_name FROM timescaledb_information.hypertables;
   Проверьте `SHOW shared_preload_libraries;` — там должно быть `timescaledb`,
   при необходимости перезапустите службу: `systemctl restart postgresql`.
 - **Не удаётся подключиться по TCP с паролем.** Убедитесь, что пароль роли
-  `postgres` задан (`install_postges_and_extension.sh`) и в `pg_hba.conf`
+  `postgres` задан (`install_postgres_and_extension.sh`) и в `pg_hba.conf`
   разрешён вход `host ... 127.0.0.1/32` (по умолчанию на Debian разрешён).
 - **`psql: command not found`.** PostgreSQL ещё не установлен — выполните
-  `install_postges_and_extension.sh`.
+  `install_postgres_and_extension.sh`.
