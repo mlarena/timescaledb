@@ -24,6 +24,12 @@
     Path of the produced archive. Default: <repo root>/release/timescaledb_test.zip.
     The archive contains the executable and appsettings.json.
 
+.PARAMETER AppZipPath
+    Path of the distribution archive. Default: <repo root>/release/app.zip.
+    The archive bundles timescaledb_test.zip together with the database
+    scripts (install_postgres_and_extension.sh, create_simple_db.sh,
+    create_timescale_db.sh).
+
 .EXAMPLE
     ./build_sensor_data_generator.ps1
 
@@ -35,7 +41,8 @@ param(
     [string]$Runtime = 'linux-x64',
     [string]$Configuration = 'Release',
     [string]$OutputDir,
-    [string]$ZipPath
+    [string]$ZipPath,
+    [string]$AppZipPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,6 +61,10 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
 
 if ([string]::IsNullOrWhiteSpace($ZipPath)) {
     $ZipPath = Join-Path $repoRoot 'release/timescaledb_test.zip'
+}
+
+if ([string]::IsNullOrWhiteSpace($AppZipPath)) {
+    $AppZipPath = Join-Path $repoRoot 'release/app.zip'
 }
 
 Write-Host "[+] Project:       $project"
@@ -116,7 +127,39 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::OpenRead($ZipPath).Entries |
     Select-Object Name, Length | Format-Table -AutoSize
 
+# ------------------------------------------------------------------------------
+# Bundle the build archive and the database scripts into app.zip.
+# ------------------------------------------------------------------------------
+$dbScripts = @(
+    (Join-Path $PSScriptRoot 'install_postgres_and_extension.sh'),
+    (Join-Path $PSScriptRoot 'create_simple_db.sh'),
+    (Join-Path $PSScriptRoot 'create_timescale_db.sh')
+)
+
+foreach ($script in $dbScripts) {
+    if (-not (Test-Path $script)) {
+        throw "Expected script not found: $script"
+    }
+}
+
+$appZipDir = Split-Path -Parent $AppZipPath
+if (-not [string]::IsNullOrWhiteSpace($appZipDir)) {
+    New-Item -ItemType Directory -Force -Path $appZipDir | Out-Null
+}
+if (Test-Path $AppZipPath) {
+    Remove-Item -Force $AppZipPath
+}
+
+Write-Host ""
+Write-Host "[+] Creating distribution archive: $AppZipPath"
+Compress-Archive -Path ($ZipPath + $dbScripts) -DestinationPath $AppZipPath -Force
+
+Write-Host "[+] Distribution archive contents:"
+[System.IO.Compression.ZipFile]::OpenRead($AppZipPath).Entries |
+    Select-Object Name, Length | Format-Table -AutoSize
+
 Write-Host ""
 Write-Host "Deploy to Debian (example):"
-Write-Host "  scp '$ZipPath' user@host:/opt/"
+Write-Host "  scp '$AppZipPath' user@host:/opt/"
+Write-Host "  ssh user@host 'cd /opt && unzip -o app.zip && chmod +x *.sh'"
 Write-Host "  ssh user@host 'cd /opt && unzip -o timescaledb_test.zip -d SensorDataGenerator && chmod +x SensorDataGenerator/SensorDataGenerator'"
