@@ -150,6 +150,131 @@ dotnet publish SensorDataGenerator/SensorDataGenerator.csproj `
 
 Остановка — `Ctrl+C`.
 
+### Запуск в фоне сразу для двух баз
+
+Один и тот же бинарник можно запустить дважды — по одному процессу на базу.
+Строку подключения не нужно править в `appsettings.json`: приложение читает
+переменные окружения (`AddEnvironmentVariables`), поэтому база задаётся
+переменной `ConnectionStrings__Postgres` (двойное подчёркивание = `:` в ключе).
+
+Дополнительно можно переопределить `Generator__IntervalSeconds` и
+`Generator__ActiveSensorsOnly`.
+
+#### Вариант 1: `nohup` (быстро, без службы)
+
+```bash
+mkdir -p /opt/sensordata/logs
+cd /opt/sensordata          # каталог, куда распакован timescaledb_test.zip
+
+# simple_db
+nohup env ConnectionStrings__Postgres="Host=localhost;Port=5432;Database=simple_db;Username=postgres;Password=12345678" \
+    ./SensorDataGenerator > logs/simple_db.log 2>&1 &
+echo $! > logs/simple_db.pid
+
+# timescale_db
+nohup env ConnectionStrings__Postgres="Host=localhost;Port=5432;Database=timescale_db;Username=postgres;Password=12345678" \
+    ./SensorDataGenerator > logs/timescale_db.log 2>&1 &
+echo $! > logs/timescale_db.pid
+```
+
+`nohup` игнорирует `SIGHUP`, поэтому процесс переживает закрытие терминала
+и выход из SSH. `&` отправляет его в фон.
+
+Проверка и остановка:
+
+```bash
+# работают ли процессы
+ps -ef | grep '[S]ensorDataGenerator'
+
+# последние строки лога
+tail -f logs/simple_db.log
+
+# остановка
+kill "$(cat logs/simple_db.pid)"
+kill "$(cat logs/timescale_db.pid)"
+```
+
+#### Вариант 2: `systemd` (рекомендуется — автозапуск и рестарт)
+
+Два unit-файла, по одному на базу.
+
+`/etc/systemd/system/sensordata-simple.service`:
+
+```ini
+[Unit]
+Description=SensorDataGenerator -> simple_db
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sensordata
+Environment="ConnectionStrings__Postgres=Host=localhost;Port=5432;Database=simple_db;Username=postgres;Password=12345678"
+ExecStart=/opt/sensordata/SensorDataGenerator
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/sensordata-simple.log
+StandardError=append:/var/log/sensordata-simple.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/systemd/system/sensordata-timescale.service` — то же самое, но
+`Database=timescale_db`, другой `Description` и другой лог-файл.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now sensordata-simple sensordata-timescale
+
+# статус
+systemctl status sensordata-simple sensordata-timescale
+
+# логи
+journalctl -u sensordata-simple -f
+
+# остановка / запуск
+sudo systemctl stop sensordata-simple sensordata-timescale
+sudo systemctl start sensordata-simple sensordata-timescale
+```
+
+> `StandardOutput=append:` требует systemd 240+ (Debian 10 и новее). Если нужен
+> journald вместо файла — просто уберите обе строки `Standard*`, тогда логи
+> пойдут в `journalctl`.
+
+#### Вариант 3: `tmux` (удобно для наблюдения)
+
+```bash
+tmux new-session -d -s gen-simple \
+  'cd /opt/sensordata && ConnectionStrings__Postgres="Host=localhost;Port=5432;Database=simple_db;Username=postgres;Password=12345678" ./SensorDataGenerator | tee -a logs/simple_db.log'
+
+tmux new-session -d -s gen-timescale \
+  'cd /opt/sensordata && ConnectionStrings__Postgres="Host=localhost;Port=5432;Database=timescale_db;Username=postgres;Password=12345678" ./SensorDataGenerator | tee -a logs/timescale_db.log'
+
+tmux ls                       # список сессий
+tmux attach -t gen-simple     # посмотреть вывод (выход: Ctrl+B, затем D)
+```
+
+#### Проверка, что данные реально пишутся
+
+```bash
+psql -h localhost -U postgres -d simple_db \
+    -c 'SELECT count(*), max("ReceivedAt") FROM public."DOVData";'
+
+psql -h localhost -U postgres -d timescale_db \
+    -c 'SELECT count(*), max("ReceivedAt") FROM public."DOVData";'
+```
+
+`count(*)` должен расти у обеих баз примерно одинаковыми шагами (по числу
+датчиков в секунду).
+
+#### Важно про остановку
+
+`SensorDataGenerator` корректно завершается по `Ctrl+C` (`SIGINT`). При
+`kill`/`systemctl stop` приходит `SIGTERM`, и процесс завершается без
+«мягкого» shutdown — для генератора тестовых данных это безопасно: все данные
+уже записаны отдельными `INSERT`, незавершённых транзакций нет.
+
 ---
 
 ## 3. Заливка больших объёмов данных
@@ -576,6 +701,12 @@ psql -h localhost -U postgres -d timescale_db \
 
 # 3. Нагрузка в реальном времени (собранный генератор)
 ./release/linux-x64/SensorDataGenerator
+
+# 3a. Либо в фоне сразу на две базы (переживает выход из консоли)
+nohup env ConnectionStrings__Postgres="Host=localhost;Port=5432;Database=simple_db;Username=postgres;Password=12345678" \
+    ./release/linux-x64/SensorDataGenerator > simple_db.log 2>&1 &
+nohup env ConnectionStrings__Postgres="Host=localhost;Port=5432;Database=timescale_db;Username=postgres;Password=12345678" \
+    ./release/linux-x64/SensorDataGenerator > timescale_db.log 2>&1 &
 
 # 4. Замеры
 psql -h localhost -U postgres -d timescale_db
