@@ -159,3 +159,14 @@ SELECT hypertable_name FROM timescaledb_information.hypertables;
   разрешён вход `host ... 127.0.0.1/32` (по умолчанию на Debian разрешён).
 - **`psql: command not found`.** PostgreSQL ещё не установлен — выполните
   `install_postgres_and_extension.sh`.
+
+
+SELECT 'DOVData'   AS table_name, COUNT(*) AS row_count FROM public."DOVData"
+UNION ALL
+SELECT 'DSPDData',   COUNT(*) FROM public."DSPDData"
+UNION ALL
+SELECT 'DustData',   COUNT(*) FROM public."DustData"
+UNION ALL
+SELECT 'IWSData',    COUNT(*) FROM public."IWSData"
+UNION ALL
+SELECT 'MUEKSData',  COUNT(*) FROM public."MUEKSData";
