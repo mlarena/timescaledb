@@ -211,47 +211,242 @@ SELECT ...
   ROLLBACK;
   ```
 
-### 4.3. Типовые аналитические запросы для сравнения
+### 4.3. Запросы для сравнения (работают в обеих базах)
 
-**Последние показания конкретного датчика:**
+Все запросы ниже — **чистый SQL без функций TimescaleDB**, поэтому одинаково
+выполняются и в `simple_db`, и в `timescale_db`. Именно так и надо сравнивать:
+один и тот же текст запроса, одни и те же данные, разное время выполнения.
+
+Запускайте в `psql` с включённым таймером:
 
 ```sql
-SELECT *
-FROM public."DOVData"
-WHERE "SensorId" = 1
-ORDER BY "DataTimestamp" DESC
-LIMIT 10;
+\timing on
 ```
 
-**Агрегация по времени (среднее за час):**
+Перед замерами обязательно обновите статистику (иначе планировщик может
+выбрать плохой план, особенно в `simple_db` после массовой заливки):
 
 ```sql
-SELECT time_bucket('1 hour', "DataTimestamp") AS bucket,
-       avg("TemperatureRoad") AS avg_temp
+ANALYZE public."DOVData";
+ANALYZE public."DSPDData";
+ANALYZE public."DustData";
+ANALYZE public."IWSData";
+ANALYZE public."MUEKSData";
+```
+
+---
+
+#### Q1. Аналитический скан всей таблицы (главный плюс columnstore)
+
+Полный проход с агрегацией по всем строкам. В `simple_db` читаются целые строки,
+в `timescale_db` — только нужные колонки из сжатых чанков.
+
+```sql
+SELECT count(*)                            AS rows,
+       round(avg("PM10Act"), 2)            AS avg_pm10,
+       round(max("PM25Act"), 2)            AS max_pm25,
+       round(avg("TemperatureProbe"), 2)   AS avg_temp,
+       round(avg("HumidityProbe"), 2)      AS avg_humidity
+FROM public."DustData";
+```
+
+**На что смотреть:** время выполнения и `Buffers: shared read` в `EXPLAIN`.
+На сжатых чанках TimescaleDB читает в разы меньше страниц.
+
+---
+
+#### Q2. Широкая строка: агрегация по многим колонкам
+
+Худший случай для rowstore (читается вся строка) и лучший для columnstore
+(читаются только перечисленные колонки).
+
+```sql
+SELECT count(*)                          AS rows,
+       round(avg("Grip"), 2)             AS avg_grip,
+       round(avg("Shake"), 2)            AS avg_shake,
+       round(avg("UPower"), 2)           AS avg_upower,
+       round(avg("TemperatureCase"), 2)  AS avg_temp_case,
+       round(avg("TemperatureRoad"), 2)  AS avg_temp_road,
+       round(avg("HeightH2O"), 2)        AS avg_h2o,
+       round(avg("HeightIce"), 2)        AS avg_ice,
+       round(avg("HeightSnow"), 2)       AS avg_snow,
+       round(avg("PercentICE"), 2)       AS avg_percent_ice,
+       round(avg("PercentPGM"), 2)       AS avg_percent_pgm,
+       round(avg("AngleToRoad"), 2)      AS avg_angle
+FROM public."DSPDData";
+```
+
+---
+
+#### Q3. Почасовая агрегация за длинный период
+
+`date_trunc` есть в обычном PostgreSQL, поэтому запрос переносим. В
+`timescale_db` он выполняется по сжатым чанкам и с отсечением лишних чанков.
+
+```sql
+SELECT date_trunc('hour', "DataTimestamp") AS bucket,
+       count(*)                            AS readings,
+       round(avg("TemperatureRoad"), 2)    AS avg_temp,
+       round(min("TemperatureRoad"), 2)    AS min_temp,
+       round(max("TemperatureRoad"), 2)    AS max_temp
 FROM public."DSPDData"
-WHERE "SensorId" = 1
-  AND "DataTimestamp" >= now() - interval '30 days'
+WHERE "DataTimestamp" >= now() - interval '90 days'
 GROUP BY bucket
 ORDER BY bucket;
 ```
 
-**Скан по диапазону времени по всей таблице:**
+---
+
+#### Q4. Срез по диапазону времени (отсечение чанков)
+
+На гипертаблице по `"ReceivedAt"` планировщик отбрасывает чанки вне диапазона —
+в плане будет меньше узлов `Scan`. В `simple_db` это обычный индексный скан
+либо чтение всей таблицы.
 
 ```sql
-SELECT count(*), avg("VisibleRange")
-FROM public."DOVData"
-WHERE "DataTimestamp" >= now() - interval '7 days';
+SELECT count(*)                         AS rows,
+       round(avg("EnvTemperature"), 2)  AS avg_temp,
+       round(avg("Humidity"), 2)        AS avg_humidity
+FROM public."IWSData"
+WHERE "ReceivedAt" >= now() - interval '7 days';
 ```
 
-**Аналитический скан большого объёма (проверка columnstore):**
+Проверить, какие чанки реально читались (только `timescale_db`):
 
 ```sql
-SELECT avg("PM10Act"), max("PM25Act")
-FROM public."DustData";
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT count(*)
+FROM public."IWSData"
+WHERE "ReceivedAt" >= now() - interval '7 days';
 ```
 
-На TimescaleDB эти запросы идут через `time_bucket`, сегментацию и сжатые
-чанки — сравнивайте план (`EXPLAIN`) и время с `simple_db`.
+---
+
+#### Q5. Последнее показание по каждому датчику
+
+`DISTINCT ON` — стандартный PostgreSQL, работает в обеих базах.
+
+```sql
+SELECT DISTINCT ON ("SensorId")
+       "SensorId",
+       "DataTimestamp",
+       "TemperatureRoad",
+       "TemperatureCase"
+FROM public."DSPDData"
+ORDER BY "SensorId", "DataTimestamp" DESC;
+```
+
+---
+
+#### Q6. Фильтр по измеряемому значению + агрегат
+
+По колонкам значений индексов нет — это скан. В `timescale_db` помогают
+minmax/sparse-индексы сжатых чанков.
+
+```sql
+SELECT count(*)                        AS icy_readings,
+       round(avg("PercentICE"), 2)     AS avg_percent_ice,
+       round(avg("TemperatureRoad"), 2) AS avg_temp_road
+FROM public."DSPDData"
+WHERE "PercentICE" > 50
+  AND "DataTimestamp" >= now() - interval '30 days';
+```
+
+---
+
+#### Q7. Join со справочником + группировка по датчику
+
+```sql
+SELECT s."SerialNumber",
+       count(*)                          AS readings,
+       round(avg(d."VisibleRange"), 2)   AS avg_visible_range,
+       round(min(d."VisibleRange"), 2)   AS min_visible_range,
+       round(max(d."VisibleRange"), 2)   AS max_visible_range
+FROM public."DOVData" d
+JOIN public."Sensor" s ON s."Id" = d."SensorId"
+WHERE d."DataTimestamp" >= now() - interval '30 days'
+GROUP BY s."SerialNumber"
+ORDER BY readings DESC;
+```
+
+---
+
+#### Q8. Группировка по посту наблюдения
+
+Использует денормализованный `"MonitoringPostId"`.
+
+```sql
+SELECT "MonitoringPostId",
+       count(*)                     AS readings,
+       round(avg("TempExt"), 2)     AS avg_temp_ext,
+       round(avg("UAkb"), 2)        AS avg_battery_voltage,
+       round(avg("WhAkb"), 2)       AS avg_battery_energy
+FROM public."MUEKSData"
+WHERE "DataTimestamp" >= now() - interval '30 days'
+GROUP BY "MonitoringPostId"
+ORDER BY readings DESC;
+```
+
+---
+
+#### Q9. Объём данных по суткам (проверка партиционирования)
+
+```sql
+SELECT date_trunc('day', "DataTimestamp") AS day,
+       count(*)                           AS readings
+FROM public."DustData"
+GROUP BY day
+ORDER BY day;
+```
+
+---
+
+#### Как замерять каждый запрос
+
+```sql
+-- 1. Прогрев (не замеряем)
+SELECT count(*) FROM public."DustData";
+
+-- 2. Замер с планом и буферами
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT count(*), round(avg("PM10Act"), 2) FROM public."DustData";
+
+-- 3. Три прогона подряд с таймером
+\timing on
+SELECT count(*), round(avg("PM10Act"), 2) FROM public."DustData";
+SELECT count(*), round(avg("PM10Act"), 2) FROM public."DustData";
+SELECT count(*), round(avg("PM10Act"), 2) FROM public."DustData";
+```
+
+Фиксируйте в таблице результатов: база, объём данных, состояние чанков
+(сжаты/нет), время, `shared read` из `EXPLAIN`.
+
+#### Важные оговорки для честного сравнения
+
+1. **Свежие чанки не сжаты.** Пока чанк младше `chunk_interval` (1 день), он
+   лежит в rowstore. Чтобы увидеть эффект columnstore сразу после заливки,
+   сожмите чанки вручную (раздел 4.6).
+2. **Данные из `data_generation` лежат в одном чанке.** Функция ставит
+   `"ReceivedAt" = now()` для всех строк, поэтому вся масса попадает в один
+   чанк, и отсечение чанков (Q4) на ней не проявится. Для демонстрации
+   партиционирования распределите `"ReceivedAt"` по времени, например:
+
+   ```sql
+   -- Разложить ReceivedAt по 30 суткам назад от DataTimestamp
+   UPDATE public."DustData"
+   SET "ReceivedAt" = "DataTimestamp";
+   ```
+   (выполнять до сжатия чанков; на большом объёме — долго).
+3. **`simple_db` требует `VACUUM`** после массовых вставок/удалений, иначе
+   таблица раздувается и сравнение нечестное:
+   ```sql
+   VACUUM (ANALYZE) public."DustData";
+   ```
+4. **Одинаковые данные.** Перед сравнением сверьте `count(*)` в обеих базах.
+5. **`time_bucket` — только TimescaleDB.** В примерах выше он намеренно не
+   используется (в `simple_db` его нет). Для `timescale_db` его можно
+   применять как замену `date_trunc`, он умеет произвольные интервалы
+   (`'15 minutes'`, `'1 day'`) и работает с `timezone`.
 
 ### 4.4. Статистика запросов (pg_stat_statements)
 
@@ -384,6 +579,6 @@ psql -h localhost -U postgres -d timescale_db \
 
 # 4. Замеры
 psql -h localhost -U postgres -d timescale_db
-#   	iming on
+#   \timing on
 #   EXPLAIN (ANALYZE, BUFFERS) SELECT ...
 ```
